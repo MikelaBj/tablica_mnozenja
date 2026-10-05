@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vježbanje množenja i dijeljenja</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f4f8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 420px;
+            text-align: center;
+        }
+        h1 { color: #2c3e50; font-size: 24px; margin-bottom: 20px; }
+        .input-group { margin-bottom: 15px; text-align: left; }
+        label { font-weight: bold; color: #34495e; display: block; margin-bottom: 5px; }
+        input, select, button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        button {
+            background-color: #3b82f6;
+            color: white;
+            font-weight: bold;
+            border: none;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+        button:hover { background-color: #2563eb; }
+        .hidden { display: none; }
+        .timer { font-size: 20px; font-weight: bold; color: #ef4444; margin-bottom: 15px; }
+        .problem { font-size: 42px; font-weight: bold; color: #1e293b; margin: 20px 0; }
+        .score-board { display: flex; justify-content: space-around; font-size: 16px; margin-bottom: 15px; }
+        .correct-text { color: #22c55e; font-weight: bold; }
+        .wrong-text { color: #ef4444; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <!-- Ekran za prijavu -->
+    <div id="setup-screen">
+        <h1>Matematički Izazov</h1>
+        <div class="input-group">
+            <label for="student-name">Ime i prezime / Nadimak:</label>
+            <input type="text" id="student-name" placeholder="Upiši svoje ime..." required>
+        </div>
+        <div class="input-group">
+            <label for="operation">Vrsta zadataka:</label>
+            <select id="operation">
+                <option value="both">Množenje i Dijeljenje</option>
+                <option value="mult">Samo Množenje</option>
+                <option value="div">Samo Dijeljenje</option>
+            </select>
+        </div>
+        <div class="input-group">
+            <label for="time-limit">Vremensko ograničenje:</label>
+            <select id="time-limit">
+                <option value="60">1 minuta (60 sekundi)</option>
+                <option value="120">2 minute (120 sekundi)</option>
+                <option value="180">3 minute (180 sekundi)</option>
+            </select>
+        </div>
+        <button onclick="startGame()">Započni igru</button>
+    </div>
+
+    <!-- Ekran igre -->
+    <div id="game-screen" class="hidden">
+        <div class="timer" id="timer-display">Preostalo: 60s</div>
+        <div class="score-board">
+            <span>Točno: <span id="correct-count" class="correct-text">0</span></span>
+            <span>Netočno: <span id="wrong-count" class="wrong-text">0</span></span>
+        </div>
+        <div class="problem" id="problem-display">-- × --</div>
+        <form onsubmit="submitAnswer(event)">
+            <input type="number" id="answer-input" placeholder="Odgovor" autofocus autocomplete="off">
+            <button type="submit">Potvrdi</button>
+        </form>
+    </div>
+
+    <!-- Ekran za kraj -->
+    <div id="end-screen" class="hidden">
+        <h1>Vrijeme je isteklo!</h1>
+        <p id="final-stats"></p>
+        <p id="status-message">Spremanje rezultata...</p>
+        <button onclick="resetGame()">Igraj ponovno</button>
+    </div>
+</div>
+
+<script>
+    // ZAMJЕНИ OVAJ URL S SVOJIM GOOGLE APPS SCRIPT URL-OM:
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw_3Xe4b5zylCXufmMBLYRTuA4SpbizeWu1yULRdP1xdiIoR_A1z9TxV6PzP6cZMpVz/exec";
+
+    let studentName = "";
+    let timeLimit = 60;
+    let timeLeft = 60;
+    let timerInterval = null;
+    let correctAnswers = 0;
+    let wrongAnswers = 0;
+    let currentAnswer = 0;
+
+    function startGame() {
+        studentName = document.getElementById("student-name").value.trim();
+        if (!studentName) {
+            alert("Molimo upiši svoje ime!");
+            return;
+        }
+
+        timeLimit = parseInt(document.getElementById("time-limit").value);
+        timeLeft = timeLimit;
+        correctAnswers = 0;
+        wrongAnswers = 0;
+
+        document.getElementById("correct-count").innerText = "0";
+        document.getElementById("wrong-count").innerText = "0";
+        document.getElementById("setup-screen").classList.add("hidden");
+        document.getElementById("end-screen").classList.add("hidden");
+        document.getElementById("game-screen").classList.remove("hidden");
+
+        generateProblem();
+        startTimer();
+    }
+
+    function startTimer() {
+        updateTimerDisplay();
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            updateTimerDisplay();
+            if (timeLeft <= 0) {
+                endGame();
+            }
+        }, 1000);
+    }
+
+    function updateTimerDisplay() {
+        document.getElementById("timer-display").innerText = `Preostalo: ${timeLeft}s`;
+    }
+
+    function generateProblem() {
+        const opChoice = document.getElementById("operation").value;
+        let isMultiplication = true;
+
+        if (opChoice === "mult") isMultiplication = true;
+        else if (opChoice === "div") isMultiplication = false;
+        else isMultiplication = Math.random() < 0.5;
+
+        const a = Math.floor(Math.random() * 10) + 1;
+        const b = Math.floor(Math.random() * 10) + 1;
+
+        if (isMultiplication) {
+            currentAnswer = a * b;
+            document.getElementById("problem-display").innerText = `${a} × ${b}`;
+        } else {
+            const product = a * b;
+            currentAnswer = a;
+            document.getElementById("problem-display").innerText = `${product} : ${b}`;
+        }
+
+        const input = document.getElementById("answer-input");
+        input.value = "";
+        input.focus();
+    }
+
+    function submitAnswer(e) {
+        e.preventDefault();
+        const input = document.getElementById("answer-input");
+        const userAnswer = parseInt(input.value);
+
+        if (isNaN(userAnswer)) return;
+
+        if (userAnswer === currentAnswer) {
+            correctAnswers++;
+            document.getElementById("correct-count").innerText = correctAnswers;
+        } else {
+            wrongAnswers++;
+            document.getElementById("wrong-count").innerText = wrongAnswers;
+        }
+
+        generateProblem();
+    }
+
+    function endGame() {
+        clearInterval(timerInterval);
+        document.getElementById("game-screen").classList.add("hidden");
+        document.getElementById("end-screen").classList.remove("hidden");
+
+        const total = correctAnswers + wrongAnswers;
+        document.getElementById("final-stats").innerText = 
+            `${studentName}, riješio/la si ukupno ${total} zadataka (${correctAnswers} točnih i ${wrongAnswers} netočnih) u ${timeLimit} sekundi.`;
+
+        sendResults(total);
+    }
+
+    function sendResults(total) {
+        const payload = {
+            name: studentName,
+            correct: correctAnswers,
+            wrong: wrongAnswers,
+            total: total,
+            timeLimit: timeLimit
+        };
+
+        fetch(GOOGLE_SCRIPT_URL, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        })
+        .then(() => {
+            document.getElementById("status-message").innerText = "Rezultati su uspješno spremljeni u profesoričinu tablicu!";
+        })
+        .catch(err => {
+            document.getElementById("status-message").innerText = "Došlo je do greške prilikom spremanja rezultata.";
+            console.error(err);
+        });
+    }
+
+    function resetGame() {
+        document.getElementById("end-screen").classList.add("hidden");
+        document.getElementById("setup-screen").classList.remove("hidden");
+    }
+</script>
+</body>
+</html>
