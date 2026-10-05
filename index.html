@@ -20,7 +20,7 @@
             border-radius: 16px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
             width: 100%;
-            max-width: 420px;
+            max-width: 440px;
             text-align: center;
         }
         h1 { color: #2c3e50; font-size: 24px; margin-bottom: 20px; }
@@ -50,6 +50,25 @@
         .score-board { display: flex; justify-content: space-around; font-size: 16px; margin-bottom: 15px; }
         .correct-text { color: #22c55e; font-weight: bold; }
         .wrong-text { color: #ef4444; font-weight: bold; }
+        .highscore-box {
+            background-color: #f8fafc;
+            border: 2px dashed #cbd5e1;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            text-align: left;
+        }
+        .highscore-title { font-weight: bold; color: #1e293b; margin-bottom: 5px; text-align: center; }
+        .record-badge {
+            background-color: #fef08a;
+            color: #854d0e;
+            font-weight: bold;
+            padding: 8px;
+            border-radius: 6px;
+            margin-top: 10px;
+            text-align: center;
+            border: 1px solid #fde047;
+        }
     </style>
 </head>
 <body>
@@ -99,13 +118,20 @@
     <div id="end-screen" class="hidden">
         <h1>Vrijeme je isteklo!</h1>
         <p id="final-stats"></p>
-        <p id="status-message">Spremanje rezultata...</p>
+        
+        <div class="highscore-box">
+            <div class="highscore-title">🏆 Highscore Rezultat</div>
+            <div id="user-score-details">Vaši bodovi: --</div>
+            <div id="record-message" class="record-badge">Učitavanje rekorda...</div>
+        </div>
+
+        <p id="status-message" style="font-size: 13px; color: #64748b;">Spremanje rezultata...</p>
         <button onclick="resetGame()">Igraj ponovno</button>
     </div>
 </div>
 
 <script>
-    // ZAMJЕНИ OVAJ URL S SVOJIM GOOGLE APPS SCRIPT URL-OM:
+    // ZAMJENI OVAJ URL S SVOJIM GOOGLE APPS SCRIPT URL-OM:
     const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw_3Xe4b5zylCXufmMBLYRTuA4SpbizeWu1yULRdP1xdiIoR_A1z9TxV6PzP6cZMpVz/exec";
 
     let studentName = "";
@@ -202,29 +228,79 @@
         document.getElementById("end-screen").classList.remove("hidden");
 
         const total = correctAnswers + wrongAnswers;
-        document.getElementById("final-stats").innerText = 
-            `${studentName}, riješio/la si ukupno ${total} zadataka (${correctAnswers} točnih i ${wrongAnswers} netočnih) u ${timeLimit} sekundi.`;
+        const minutes = timeLimit / 60;
+        // Izračun bodova prema formuli: (Točni - Netočni) / Minutaža
+        let currentScore = (correctAnswers - wrongAnswers) / minutes;
+        currentScore = Math.max(0, currentScore); // Onemogućava negativne bodove
+        currentScore = parseFloat(currentScore.toFixed(2));
 
-        sendResults(total);
+        document.getElementById("final-stats").innerText = 
+            `${studentName}, riješio/la si ukupno ${total} zadataka (${correctAnswers} točnih i ${wrongAnswers} netočnih).`;
+        
+        document.getElementById("user-score-details").innerHTML = 
+            `Tvoji bodovi: <b>${currentScore}</b> pt/min ((${correctAnswers} - ${wrongAnswers}) / ${minutes} min)`;
+
+        // Prvo dohvaćamo postojeće rezultate za provjeru rekorda, pa onda šaljemo novi
+        fetchHighscoreAndSubmit(total, currentScore);
     }
 
-    function sendResults(total) {
+    function fetchHighscoreAndSubmit(total, currentScore) {
+        document.getElementById("record-message").innerText = "Provjeravanje najboljeg rezultata...";
+
+        fetch(GOOGLE_SCRIPT_URL)
+            .then(res => res.json())
+            .then(data => {
+                let maxScore = -1;
+                let topStudent = "";
+
+                if (Array.isArray(data) && data.length > 0) {
+                    data.forEach(entry => {
+                        let scoreVal = parseFloat(entry.score);
+                        if (!isNaN(scoreVal) && scoreVal > maxScore) {
+                            maxScore = scoreVal;
+                            topStudent = entry.name;
+                        }
+                    });
+                }
+
+                const recordMsg = document.getElementById("record-message");
+
+                if (currentScore > maxScore && maxScore !== -1) {
+                    recordMsg.innerHTML = `🎉 <b>ČESTITAMO!</b> Postavio/la si NOVI REKORD! Nadmašio/la si dosadašnjeg rekordera (${topStudent}: ${maxScore} pt/min)!`;
+                } else if (maxScore !== -1) {
+                    recordMsg.innerHTML = `👑 Trenutni rekorder je <b>${topStudent}</b> s rezultatom <b>${maxScore} pt/min</b>. Sretno u sljedećem pokušaju!`;
+                } else {
+                    recordMsg.innerHTML = `🌟 Prvi/a si igrač/ica! Tvoj rezultat je ujedno i trenutni rekord!`;
+                }
+
+                // Nakon uspješne provjere šaljemo podatke u tablicu
+                sendResults(total, currentScore);
+            })
+            .catch(err => {
+                console.error("Greška pri dohvaćanju rekorda:", err);
+                document.getElementById("record-message").innerText = "Nije moguće učitati trenutni rekord.";
+                sendResults(total, currentScore);
+            });
+    }
+
+    function sendResults(total, currentScore) {
         const payload = {
             name: studentName,
             correct: correctAnswers,
             wrong: wrongAnswers,
             total: total,
-            timeLimit: timeLimit
+            timeLimit: timeLimit,
+            score: currentScore
         };
 
         fetch(GOOGLE_SCRIPT_URL, {
             method: "POST",
             mode: "no-cors",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify(payload)
         })
         .then(() => {
-            document.getElementById("status-message").innerText = "Rezultati su uspješno spremljeni u profesoričinu tablicu!";
+            document.getElementById("status-message").innerText = "Rezultati su uspješno spremljeni u učiteljičinu/učiteljevu tablicu!";
         })
         .catch(err => {
             document.getElementById("status-message").innerText = "Došlo je do greške prilikom spremanja rezultata.";
